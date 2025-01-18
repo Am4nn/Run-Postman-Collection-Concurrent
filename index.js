@@ -160,7 +160,7 @@ async function executeRequest(request, globalAuth) {
         });
 
         const endTime = performance.now();
-        console.log(`Request ${request.name} completed`);
+        console.log(`Request [${request.name}] completed`);
         return {
             name: request.name,
             status: "success",
@@ -199,6 +199,7 @@ function logRequestResult(
     if (status === "success") {
         console.log(`✅ [${name}] - Success ${statusCode}`);
         console.log(`   Time Taken: ${timeTaken}\n`);
+        data && console.log(`   Data: ${data}\n`);
     } else {
         console.log(`❌ [${name}] - Failed ${statusCode}`);
         console.log(`   Error: ${data}\n`);
