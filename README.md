@@ -1,14 +1,18 @@
 # Postman Collection Runner
 
-This project is a Node.js utility to run requests from a Postman collection concurrently. It reads the Postman collection JSON file, processes the requests, and executes them using the `axios` library. The tool provides detailed logs for each request's execution status (success or failure) and tracks the execution time, along with a summary report of the test run.
+This project is a Node.js utility to execute requests from a Postman collection concurrently. It reads the Postman collection JSON file, processes the requests (including handling placeholders and authentication), and executes them using the `axios` library. The tool provides detailed logs for each request's execution status (success or failure), tracks execution time, and generates a comprehensive summary report.
 
 ## Features
 
-- Parse Postman collection JSON and extract requests and global information.
-- Support for multiple authentication types: API Key, Bearer, Basic Auth.
-- Run requests concurrently using `Promise.allSettled` for better performance.
-- Log success and failure of each request along with execution time.
-- Generate a summary report with total execution time, successful/failed requests, and average time per request.
+- Parse Postman collection JSON and extract requests and global information
+- Replace placeholders (e.g., `{{PLACEHOLDER}}`) in the collection with environment variables
+- Support for multiple authentication types: API Key, Bearer, Basic Auth
+- Execute requests concurrently using `Promise.allSettled` for better performance
+- Log detailed information for each request, including success/failure, execution time, and response data
+- Generate a summary report with:
+  - Total execution time
+  - Successful/failed requests
+  - Average time per request
 
 ## Prerequisites
 
@@ -48,9 +52,18 @@ Make sure you have a Postman collection JSON file. If you don't have one, you ca
 - Select `Export` and choose the format `Collection v2.1 (recommended)`.
 - Save the JSON file.
 
-### 2. Run the Script
+### 2. Set Up Environment Variables
 
-Place your Postman collection JSON file in the `postman-collections` directory or update the path in the script.
+Create a `.env` file in the root directory to define environment variables used in your Postman collection (e.g., replacing `{{PLACEHOLDER}}` values). Example:
+
+```env
+API_KEY=your_api_key
+BASE_URL=https://api.example.com
+```
+
+### 3. Run the Script
+
+Place your Postman collection JSON file in the `postman-collections` directory or update the `COLLECTION_PATH` variable in the `index.js` file to point to your file.
 
 To run the utility, use the following command:
 
@@ -60,7 +73,7 @@ npm start
 
 This will execute the requests in the collection concurrently and log the results in the terminal. You will also see a summary report at the end of the execution.
 
-### 3. Customization
+### 4. Customization
 
 - **Collection Path**: Update the `COLLECTION_PATH` variable in the `index.js` file to point to your collection file.
 
