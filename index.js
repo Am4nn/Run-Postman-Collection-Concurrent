@@ -1,5 +1,32 @@
-const fs = require('fs');
-const axios = require('axios');
+const fs = require("fs");
+const axios = require("axios");
+require("dotenv").config();
+
+const COMMON_HEADERS = {
+    "Content-Type": "application/json",
+    Accept: "*/*",
+    "Cache-Control": "no-cache",
+    "Accept-Encoding": "gzip, deflate, br",
+    Connection: "keep-alive",
+};
+
+/**
+ * Replace all placeholders in a given string with corresponding values from environment variables.
+ * Placeholders are denoted by double curly braces, e.g., {{MY_VAR}}.
+ * If a corresponding environment variable is not found, the placeholder remains unchanged.
+ *
+ * @param {string} collectionRawString - The string containing placeholders to be replaced.
+ * @returns {string} - The string with placeholders replaced by environment variable values.
+ */
+function replacePlaceholders(collectionRawString) {
+    return collectionRawString.replace(/{{(.*?)}}/g, (_, key) => {
+        const value = process.env[key];
+        if (!value) {
+            console.warn(`Environment variable not found: ${key}`);
+        }
+        return value || `{{${key}}}`; // Keep the placeholder if not found
+    });
+}
 
 /**
  * Parse the Postman collection JSON and extract necessary information.
@@ -8,7 +35,9 @@ const axios = require('axios');
  * @throws {Error} If the collection format is invalid.
  */
 function parseCollection(collectionPath) {
-    const collection = JSON.parse(fs.readFileSync(collectionPath, 'utf8'));
+    const collection = JSON.parse(
+        replacePlaceholders(fs.readFileSync(collectionPath, "utf8"))
+    );
     const { info, item: items } = collection;
 
     if (!info || !items) {
@@ -56,22 +85,24 @@ function applyAuth(headers, auth) {
 
     const authHandlers = {
         apikey: ({ apikey }) => {
-            const keyField = apikey.find((entry) => entry.key === 'key')?.value;
-            const valueField = apikey.find((entry) => entry.key === 'value')?.value;
-            const inField = apikey.find((entry) => entry.key === 'in')?.value;
+            const keyField = apikey.find((entry) => entry.key === "key")?.value;
+            const valueField = apikey.find((entry) => entry.key === "value")?.value;
+            const inField = apikey.find((entry) => entry.key === "in")?.value;
 
-            if (keyField && valueField && inField === 'header') {
+            if (keyField && valueField && inField === "header") {
                 headers[keyField] = valueField;
             } else {
-                console.warn('Unsupported or missing API key configuration.');
+                console.warn("Unsupported or missing API key configuration.");
             }
         },
         bearer: ({ bearer }) => {
-            headers['Authorization'] = `Bearer ${bearer[0].value}`;
+            headers["Authorization"] = `Bearer ${bearer[0].value}`;
         },
         basic: ({ basic }) => {
             const { username, password } = basic;
-            headers['Authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+            headers["Authorization"] = `Basic ${Buffer.from(
+                `${username}:${password}`
+            ).toString("base64")}`;
         },
         // Add more auth types as needed
     };
@@ -117,46 +148,59 @@ async function executeRequest(request, globalAuth) {
     const startTime = performance.now();
     try {
         const headers = prepareHeaders(request.headers, request.auth, globalAuth);
-        const response = await axios({
+        const commonConfig = {
             method: request.method.toLowerCase(),
             url: request.url,
-            headers,
-            data: request.body || null,
+            headers: { ...COMMON_HEADERS, ...headers },
+        };
+        console.log("Request Info:", commonConfig);
+        const response = await axios({
+            ...commonConfig,
+            data: request?.body || null,
         });
 
         const endTime = performance.now();
+        console.log(`Request ${request.name} completed`);
         return {
             name: request.name,
-            status: 'success',
-            data: response.data,
-            timeTaken: `${(endTime - startTime).toFixed(2)} ms`
+            status: "success",
+            data: response?.data,
+            statusCode: response?.status,
+            timeTaken: `${(endTime - startTime).toFixed(2)} ms`,
         };
     } catch (error) {
-        const endTime = performance.now();
-        return {
+        const errorResponse = {
             name: request.name,
-            status: 'error',
-            error: error.message,
-            timeTaken: `${(endTime - startTime).toFixed(2)} ms`
+            status: "error",
+            error: error?.message,
+            statusCode: error?.status || error?.response?.status || error?.code,
+            data: error?.response?.data,
         };
+        console.error(errorResponse);
+        return errorResponse;
     }
 }
 
 /**
  * Log detailed information about a request's execution.
  * @param {string} status - The status of the request (success or error).
+ * @param {number} statusCode - The status code of the response.
  * @param {string} name - The name of the request.
  * @param {string} timeTaken - Time taken for the request to complete.
- * @param {string} error - The error message (if any).
+ * @param {Object} data - Additional data related to the request.
  */
-function logRequestResult(status, name, timeTaken, data = null) {
-    if (status === 'success') {
-        console.log(`✅ [${name}] - Success`);
-        console.log(`   Time Taken: ${timeTaken}`);
-        console.log(`   Data: ${data}\n`);
+function logRequestResult(
+    status,
+    statusCode,
+    name,
+    timeTaken = null,
+    data = null
+) {
+    if (status === "success") {
+        console.log(`✅ [${name}] - Success ${statusCode}`);
+        console.log(`   Time Taken: ${timeTaken}\n`);
     } else {
-        console.log(`❌ [${name}] - Failed`);
-        console.log(`   Time Taken: ${timeTaken}`);
+        console.log(`❌ [${name}] - Failed ${statusCode}`);
         console.log(`   Error: ${data}\n`);
     }
 }
@@ -169,13 +213,19 @@ function logRequestResult(status, name, timeTaken, data = null) {
  * @param {number} totalTime - Total time taken for all requests in ms.
  * @param {number} avgTime - Average time taken for requests in ms.
  */
-function logSummaryReport(totalRequests, successCount, failureCount, totalTime, avgTime) {
-    console.log('Summary Report:');
+function logSummaryReport(
+    totalRequests,
+    successCount,
+    failureCount,
+    totalTime,
+    avgTime
+) {
+    console.log("Summary Report:");
     console.log(`Total Requests: ${totalRequests}`);
     console.log(`Successful Requests: ${successCount}`);
     console.log(`Failed Requests: ${failureCount}`);
-    console.log(`Total Execution Time: ${totalTime.toFixed(2)} ms`);
-    console.log(`Average Time per Request: ${avgTime.toFixed(2)} ms`);
+    console.log(`Total Execution Time: ${(totalTime / 1000).toFixed(3)} s`);
+    console.log(`Average Time per Request: ${(avgTime / 1000).toFixed(3)} s`);
 }
 
 /**
@@ -195,22 +245,51 @@ async function runConcurrentRequests(requests, globalAuth) {
     let successCount = 0;
     let failureCount = 0;
     let totalTime = 0;
+    // status, statusCode, name, timeTaken, data
+    const responseSummary = [];
 
-    console.log(`Execution Results:\n`);
+    console.log(`\nExecution Results:\n`);
     results.forEach((result, index) => {
         const { name } = requests[index];
-        if (result.status === 'fulfilled') {
+        if (result.value.status === "success") {
             successCount++;
             totalTime += parseFloat(result.value.timeTaken);
-            logRequestResult('success', name, result.value.timeTaken, JSON.stringify(result.value.data, null, 2));
+            responseSummary.push({
+                status: "success",
+                statusCode: result.value.statusCode,
+                name,
+                timeTaken: result.value.timeTaken,
+                data: JSON.stringify(result.value.data, null, 2),
+            });
         } else {
             failureCount++;
-            logRequestResult('error', name, result.reason.timeTaken, result.reason.error);
+            responseSummary.push({
+                status: "error",
+                statusCode: result.value.statusCode,
+                name,
+                timeTaken: null,
+                data: JSON.stringify(result.value.data, null, 2),
+            });
         }
     });
 
     const avgTime = successCount > 0 ? totalTime / successCount : 0;
-    logSummaryReport(requests.length, successCount, failureCount, (endTime - startTime), avgTime);
+    responseSummary.forEach((summary) =>
+        logRequestResult(
+            summary.status,
+            summary.statusCode,
+            summary.name,
+            summary.timeTaken,
+            summary.data
+        )
+    );
+    logSummaryReport(
+        requests.length,
+        successCount,
+        failureCount,
+        endTime - startTime,
+        avgTime
+    );
 }
 
 /**
@@ -224,5 +303,7 @@ async function main(collectionPath) {
 }
 
 // Driver Code
-const COLLECTION_PATH = './postman-collections/Testing.postman_collection.json';
-main(COLLECTION_PATH).catch((err) => console.error(`Error: ${err.message}`));
+const COLLECTION_PATH = "./postman-collections/Testing.postman_collection.json";
+main(COLLECTION_PATH)
+    .catch((err) => console.error(`Error: ${err.message}`))
+    .finally(() => process.exit());
